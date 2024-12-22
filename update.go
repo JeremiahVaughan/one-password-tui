@@ -34,6 +34,56 @@ type Urls struct {
 	Href    string `json:"href,omitempty"`
 }
 
+type OnePasswordItemDetails struct {
+	ID                    string    `json:"id,omitempty"`
+	Title                 string    `json:"title,omitempty"`
+	Version               int       `json:"version,omitempty"`
+	Vault                 Vault     `json:"vault,omitempty"`
+	Category              string    `json:"category,omitempty"`
+	LastEditedBy          string    `json:"last_edited_by,omitempty"`
+	CreatedAt             time.Time `json:"created_at,omitempty"`
+	UpdatedAt             time.Time `json:"updated_at,omitempty"`
+	AdditionalInformation string    `json:"additional_information,omitempty"`
+	Sections              []Section `json:"sections,omitempty"`
+	Fields                []Fields  `json:"fields,omitempty"`
+}
+
+type PasswordDetails struct {
+	Entropy   int    `json:"entropy,omitempty"`
+	Generated bool   `json:"generated,omitempty"`
+	Strength  string `json:"strength,omitempty"`
+}
+
+type Section struct {
+	ID string `json:"id,omitempty"`
+}
+
+type FieldType string
+
+const (
+	FieldTypeConcealed   FieldType = "CONCEALED"
+	FieldTypeString      FieldType = "STRING"
+	FieldTypeEmail       FieldType = "EMAIL"
+	FieldTypeUrl         FieldType = "URL"
+	FieldTypeDate        FieldType = "DATE"
+	FieldTypeMonthYear   FieldType = "MONTH_YEAR"
+	FieldTypePhoneNumber FieldType = "PHONE"
+	FieldTypeOtp         FieldType = "OTP"
+	FieldTypeNa          FieldType = "N/A"
+)
+
+type Fields struct {
+	ID              string          `json:"id,omitempty"`
+	Type            FieldType       `json:"type,omitempty"`
+	Purpose         string          `json:"purpose,omitempty"`
+	Label           string          `json:"label,omitempty"`
+	Value           string          `json:"value,omitempty"`
+	Reference       string          `json:"reference,omitempty"`
+	Entropy         float64         `json:"entropy,omitempty"`
+	PasswordDetails PasswordDetails `json:"password_details,omitempty"`
+	Section         Section         `json:"section,omitempty"`
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
