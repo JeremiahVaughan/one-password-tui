@@ -33,6 +33,7 @@ type model struct {
 	spinner      spinner.Model
 	cursor       int
 	data         modelData
+	items        list.Model
 }
 
 // modelData can't use the model itself because apparently channels have a size limit of 64kb
@@ -40,7 +41,7 @@ type modelData struct {
 	err           error
 	validationMsg string
 	activeView    viewOption
-	items         list.Model
+	items         []OnePasswordItem
 	thePassword   textinput.Model
 }
 
@@ -56,10 +57,8 @@ func (i OnePasswordItem) Title() string {
 func (i OnePasswordItem) Description() string { return i.AdditionalInformation }
 func (i OnePasswordItem) FilterValue() string {
 	value := strings.Builder{}
-	for _, site := range i.Urls {
-		value.WriteString(site.Href)
-	}
 	value.WriteString(i.TheTitle)
+	value.WriteRune('\n')
 	value.WriteString(i.AdditionalInformation)
 	return value.String()
 }
@@ -87,8 +86,8 @@ func initModel() (model, error) {
 	thePassword.Width = 100
 
 	m := model{
+		items: items,
 		data: modelData{
-			items:       items,
 			thePassword: thePassword,
 			activeView:  activeViewEnterPassword,
 		},
@@ -99,6 +98,6 @@ func initModel() (model, error) {
 
 func (m *model) resetSpinner() {
 	s := spinner.New()
-	s.Spinner = spinner.Globe
+	s.Spinner = spinner.Moon
 	m.spinner = s
 }

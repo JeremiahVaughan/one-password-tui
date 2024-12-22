@@ -24,13 +24,16 @@ func (m model) View() string {
 	if m.data.validationMsg != "" {
 		display.WriteString(getErrorStyle(m.data.validationMsg))
 	}
-
-	switch m.data.activeView {
-	case activeViewEnterPassword:
-		display.WriteString(m.data.thePassword.View())
-	case activeViewListItems:
-		display.WriteString(m.data.items.View())
-	case activeViewItem:
+	if m.loading {
+		display.WriteString(m.spinner.View())
+	} else {
+		switch m.data.activeView {
+		case activeViewEnterPassword:
+			display.WriteString(m.data.thePassword.View())
+		case activeViewListItems:
+			display.WriteString(m.items.View())
+		case activeViewItem:
+		}
 	}
 
 	return docStyle.Render(display.String())

@@ -101,24 +101,42 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case activeViewEnterPassword:
 				switch msg.Type {
 				case tea.KeyEnter:
-					password := fmt.Sprintf("'%s'", m.data.thePassword.Value())
-					theCommand := exec.Command("op", "signin")
-					theCommand.Stdin = bytes.NewBufferString(password)
-					output, err := theCommand.CombinedOutput()
-					if err != nil {
-						m.data.err = fmt.Errorf("error, during signin. Error: %v. Output: %s", err, output)
-						return m, cmd
+					if !m.loading {
+						m.loading = true
+						go func() {
+							var md modelData
+							passwordValue := m.data.thePassword.Value()
+							if passwordValue == "" {
+								md.validationMsg = "must provide the password"
+							} else {
+								password := fmt.Sprintf("'%s'", passwordValue)
+								theCommand := exec.Command("op", "signin")
+								theCommand.Stdin = bytes.NewBufferString(password)
+								output, err := theCommand.CombinedOutput()
+								if err != nil {
+									m.data.err = fmt.Errorf("error, during signin. Error: %v. Output: %s", err, output)
+								} else {
+									listItems, err := fetchItems()
+									if err != nil {
+										m.data.err = fmt.Errorf("error, when fetchItems() for Update(). Error: %v. Output: %s", err, output)
+									} else {
+										md.err = nil
+										md.validationMsg = ""
+										md.activeView = activeViewListItems
+										md.items = listItems
+									}
+								}
+							}
+							loadingFinished <- md
+						}()
+						return m, m.spinner.Tick
 					}
-					m.data.activeView = activeViewListItems
-					listItems, err := fetchItems()
-					if err != nil {
-						m.data.err = fmt.Errorf("error, when fetchItems() for Update(). Error: %v. Output: %s", err, output)
-						return m, cmd
-
-					}
-					m.data.items.SetItems(listItems)
 				}
 			case activeViewListItems:
+				switch msg.Type {
+				case tea.KeyEnter:
+
+				}
 			case activeViewItem:
 			}
 		}
@@ -127,10 +145,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case md := <-loadingFinished:
 			m.resetSpinner()
 			m.loading = false
-			m.data.err = md.err
-			m.data.validationMsg = md.validationMsg
+			m.data = md
 			switch m.data.activeView {
 			case activeViewListItems:
+				itemsToSet := make([]list.Item, len(m.data.items))
+				for i, it := range m.data.items {
+					itemsToSet[i] = it
+				}
+				m.items.SetItems(itemsToSet)
 			case activeViewItem:
 			}
 		default:
@@ -139,7 +161,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.WindowSizeMsg:
 		h, v := docStyle.GetFrameSize()
-		m.data.items.SetSize(msg.Width-h, msg.Height-v)
+		m.items.SetSize(msg.Width-h, msg.Height-v)
 	case error:
 		m.data.err = msg
 		return m, nil
@@ -150,13 +172,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case activeViewEnterPassword:
 		m.data.thePassword, cmd = m.data.thePassword.Update(msg)
 	case activeViewListItems:
-		m.data.items, cmd = m.data.items.Update(msg)
+		m.items, cmd = m.items.Update(msg)
 	case activeViewItem:
 	}
 	return m, cmd
 }
 
-func fetchItems() ([]list.Item, error) {
+func fetchItems() ([]OnePasswordItem, error) {
 	theCommand := exec.Command("op", "item", "list", "--format", "json")
 	output, err := theCommand.CombinedOutput()
 	if err != nil {
@@ -167,9 +189,5 @@ func fetchItems() ([]list.Item, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error, when decoding items from one password. Error: %v. Command output: %s", err, output)
 	}
-	result := make([]list.Item, len(onePasswordItems))
-	for i, it := range onePasswordItems {
-		result[i] = it
-	}
-	return result, nil
+	return onePasswordItems, nil
 }
