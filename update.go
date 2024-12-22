@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -45,7 +46,21 @@ type OnePasswordItemDetails struct {
 	UpdatedAt             time.Time `json:"updated_at,omitempty"`
 	AdditionalInformation string    `json:"additional_information,omitempty"`
 	Sections              []Section `json:"sections,omitempty"`
-	Fields                []Fields  `json:"fields,omitempty"`
+	Fields                []Field   `json:"fields,omitempty"`
+}
+
+func (f Field) Title() string {
+	return f.Label
+}
+func (f Field) Description() string {
+	switch f.Type {
+	case FieldTypeConcealed, FieldTypeOtp:
+		return strings.Repeat("*", len(f.Value))
+	}
+	return f.Value
+}
+func (f Field) FilterValue() string {
+	return f.Label
 }
 
 type PasswordDetails struct {
@@ -72,7 +87,7 @@ const (
 	FieldTypeNa          FieldType = "N/A"
 )
 
-type Fields struct {
+type Field struct {
 	ID              string          `json:"id,omitempty"`
 	Type            FieldType       `json:"type,omitempty"`
 	Purpose         string          `json:"purpose,omitempty"`
@@ -102,13 +117,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch msg.Type {
 				case tea.KeyEnter:
 					if !m.loading {
-						m.loading = true
-						go func() {
-							var md modelData
-							passwordValue := m.data.thePassword.Value()
-							if passwordValue == "" {
-								md.validationMsg = "must provide the password"
-							} else {
+						passwordValue := m.data.thePassword.Value()
+						if passwordValue == "" {
+							m.data.validationMsg = "must provide the password"
+						} else {
+							m.loading = true
+							go func() {
+								var md modelData
 								password := fmt.Sprintf("'%s'", passwordValue)
 								theCommand := exec.Command("op", "signin")
 								theCommand.Stdin = bytes.NewBufferString(password)
@@ -126,18 +141,53 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 										md.items = listItems
 									}
 								}
-							}
-							loadingFinished <- md
-						}()
+								loadingFinished <- md
+							}()
+						}
 						return m, m.spinner.Tick
 					}
 				}
 			case activeViewListItems:
-				switch msg.Type {
-				case tea.KeyEnter:
-
+				if m.items.FilterState() != list.Filtering {
+					switch msg.Type {
+					case tea.KeyEnter:
+						if !m.loading {
+							theItem, ok := m.items.SelectedItem().(OnePasswordItem)
+							if !ok {
+								m.data.err = fmt.Errorf("error, invalid one password item type selected. Selected: %v", m.items.SelectedItem())
+							}
+							theCommand := exec.Command("op", "item", "get", theItem.ID, "--format", "json")
+							m.loading = true
+							go func() {
+								var md modelData
+								output, err := theCommand.CombinedOutput()
+								if err != nil {
+									m.data.err = fmt.Errorf("error, during signin. Error: %v. Output: %s", err, output)
+								} else {
+									var theItemDetails OnePasswordItemDetails
+									err = json.Unmarshal(output, &theItemDetails)
+									if err != nil {
+										m.data.err = fmt.Errorf("error, when decoding one password item details. Error: %v", err)
+									} else {
+										md.err = nil
+										md.validationMsg = ""
+										md.activeView = activeViewItem
+										md.selectedItem = theItemDetails
+									}
+								}
+								loadingFinished <- md
+							}()
+							return m, m.spinner.Tick
+						}
+					}
 				}
 			case activeViewItem:
+				if m.itemDetails.FilterState() != list.Filtering {
+					switch msg.Type {
+					case tea.KeyEsc:
+						m.data.activeView = activeViewListItems
+					}
+				}
 			}
 		}
 	case spinner.TickMsg:
@@ -154,6 +204,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.items.SetItems(itemsToSet)
 			case activeViewItem:
+				itemsToSet := make([]list.Item, len(md.selectedItem.Fields))
+				for i, f := range md.selectedItem.Fields {
+					itemsToSet[i] = f
+				}
+				m.itemDetails.Title = md.selectedItem.Title
+				m.itemDetails.SetItems(itemsToSet)
 			}
 		default:
 			m.spinner, cmd = m.spinner.Update(msg)
@@ -162,6 +218,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		h, v := docStyle.GetFrameSize()
 		m.items.SetSize(msg.Width-h, msg.Height-v)
+		m.itemDetails.SetSize(msg.Width-h, msg.Height-v)
 	case error:
 		m.data.err = msg
 		return m, nil
@@ -174,6 +231,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case activeViewListItems:
 		m.items, cmd = m.items.Update(msg)
 	case activeViewItem:
+		m.itemDetails, cmd = m.itemDetails.Update(msg)
 	}
 	return m, cmd
 }

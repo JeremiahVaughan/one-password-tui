@@ -28,12 +28,12 @@ const (
 )
 
 type model struct {
-	selectedItem OnePasswordItem
-	loading      bool
-	spinner      spinner.Model
-	cursor       int
-	data         modelData
-	items        list.Model
+	loading     bool
+	spinner     spinner.Model
+	cursor      int
+	data        modelData
+	items       list.Model
+	itemDetails list.Model
 }
 
 // modelData can't use the model itself because apparently channels have a size limit of 64kb
@@ -42,6 +42,7 @@ type modelData struct {
 	validationMsg string
 	activeView    viewOption
 	items         []OnePasswordItem
+	selectedItem  OnePasswordItemDetails
 	thePassword   textinput.Model
 }
 
@@ -77,7 +78,9 @@ func main() {
 
 func initModel() (model, error) {
 	items := list.New(nil, list.NewDefaultDelegate(), 0, 0) // will set width and height later
-	items.Title = "Items"
+	items.Title = "1Password"
+
+	itemDetails := list.New(nil, list.NewDefaultDelegate(), 0, 0) // will set width and height later
 
 	thePassword := textinput.New()
 	thePassword.Placeholder = "the one and only password"
@@ -86,7 +89,8 @@ func initModel() (model, error) {
 	thePassword.Width = 100
 
 	m := model{
-		items: items,
+		items:       items,
+		itemDetails: itemDetails,
 		data: modelData{
 			thePassword: thePassword,
 			activeView:  activeViewEnterPassword,

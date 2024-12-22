@@ -21,9 +21,6 @@ func (m model) View() string {
 	// display.WriteRune('\n')
 	// display.WriteRune('\n')
 
-	if m.data.validationMsg != "" {
-		display.WriteString(getErrorStyle(m.data.validationMsg))
-	}
 	if m.loading {
 		display.WriteString(m.spinner.View())
 	} else {
@@ -33,7 +30,11 @@ func (m model) View() string {
 		case activeViewListItems:
 			display.WriteString(m.items.View())
 		case activeViewItem:
+			display.WriteString(m.itemDetails.View())
 		}
+	}
+	if m.data.validationMsg != "" {
+		display.WriteString(getErrorStyle(m.data.validationMsg))
 	}
 
 	return docStyle.Render(display.String())
