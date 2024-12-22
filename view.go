@@ -26,11 +26,21 @@ func (m model) View() string {
 	} else {
 		switch m.data.activeView {
 		case activeViewEnterPassword:
-			display.WriteString(m.data.thePassword.View())
+			password := m.data.thePassword.Value()
+			maskedPassword := strings.Repeat("●", len(password))
+			view := fmt.Sprintf(
+				"Enter your password:\n\n %s\n\n(press enter to submit)",
+				maskedPassword,
+			)
+			display.WriteString(view)
 		case activeViewListItems:
 			display.WriteString(m.items.View())
 		case activeViewItem:
 			display.WriteString(m.itemDetails.View())
+			if m.clipboardLifeMeter.Running() {
+				display.WriteRune('\t')
+				display.WriteString(fmt.Sprintf("Clipboard cleanup in: %s", m.clipboardLifeMeter.View()))
+			}
 		}
 	}
 	if m.data.validationMsg != "" {

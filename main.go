@@ -3,10 +3,12 @@ package main
 import (
 	"log"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/timer"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -27,13 +29,18 @@ const (
 	activeViewItem          viewOption = "i"
 )
 
+const (
+	clipboardLifeInSeconds = 30
+)
+
 type model struct {
-	loading     bool
-	spinner     spinner.Model
-	cursor      int
-	data        modelData
-	items       list.Model
-	itemDetails list.Model
+	loading            bool
+	spinner            spinner.Model
+	cursor             int
+	data               modelData
+	items              list.Model
+	itemDetails        list.Model
+	clipboardLifeMeter timer.Model
 }
 
 // modelData can't use the model itself because apparently channels have a size limit of 64kb
@@ -95,6 +102,7 @@ func initModel() (model, error) {
 			thePassword: thePassword,
 			activeView:  activeViewEnterPassword,
 		},
+		clipboardLifeMeter: newTimer(),
 	}
 	m.resetSpinner()
 	return m, nil
@@ -104,4 +112,8 @@ func (m *model) resetSpinner() {
 	s := spinner.New()
 	s.Spinner = spinner.Moon
 	m.spinner = s
+}
+
+func newTimer() timer.Model {
+	return timer.NewWithInterval(clipboardLifeInSeconds*time.Second, time.Millisecond)
 }

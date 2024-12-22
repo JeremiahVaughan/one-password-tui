@@ -3,12 +3,17 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"os/exec"
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/timer"
+
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -186,10 +191,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					switch msg.Type {
 					case tea.KeyEsc:
 						m.data.activeView = activeViewListItems
+					case tea.KeyEnter:
+						selectedItem, ok := m.itemDetails.SelectedItem().(Field)
+						if !ok {
+							m.data.err = errors.New("error, when casting selected item field")
+						} else {
+							m.data.err = copyPasswordToClipboard(selectedItem.Type, selectedItem.Value)
+							if m.data.err != nil {
+								m.data.err = fmt.Errorf("error, when copyPasswordToClipboard() for Update(). Error: %v", m.data.err)
+							} else {
+								m.clipboardLifeMeter = newTimer()
+								m.clipboardLifeMeter.Init()
+							}
+						}
 					}
 				}
 			}
 		}
+	case timer.TickMsg:
+		m.clipboardLifeMeter, cmd = m.clipboardLifeMeter.Update(msg)
+		return m, cmd
 	case spinner.TickMsg:
 		select {
 		case md := <-loadingFinished:
@@ -204,9 +225,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.items.SetItems(itemsToSet)
 			case activeViewItem:
-				itemsToSet := make([]list.Item, len(md.selectedItem.Fields))
-				for i, f := range md.selectedItem.Fields {
-					itemsToSet[i] = f
+				var itemsToSet []list.Item
+				for _, f := range md.selectedItem.Fields {
+					if f.Value != "" {
+						itemsToSet = append(itemsToSet, f)
+					}
 				}
 				m.itemDetails.Title = md.selectedItem.Title
 				m.itemDetails.SetItems(itemsToSet)
@@ -232,6 +255,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.items, cmd = m.items.Update(msg)
 	case activeViewItem:
 		m.itemDetails, cmd = m.itemDetails.Update(msg)
+		m.clipboardLifeMeter, cmd = m.clipboardLifeMeter.Update(msg)
 	}
 	return m, cmd
 }
@@ -248,4 +272,29 @@ func fetchItems() ([]OnePasswordItem, error) {
 		return nil, fmt.Errorf("error, when decoding items from one password. Error: %v. Command output: %s", err, output)
 	}
 	return onePasswordItems, nil
+}
+
+func copyPasswordToClipboard(theType FieldType, password string) error {
+	err := clipboard.WriteAll(password)
+	if err != nil {
+		return fmt.Errorf("failed to copy password to clipboard: %v", err)
+	}
+	switch theType {
+	case FieldTypeConcealed, FieldTypeOtp:
+		time.AfterFunc(clipboardLifeInSeconds*time.Second, func() {
+			err := clipboard.WriteAll("")
+			if err != nil {
+				log.Fatalf("error, failed to clear clipboard:", err)
+			}
+		})
+	}
+	return nil
+}
+
+type tickMsg time.Time
+
+func tickCmd() tea.Cmd {
+	return tea.Tick(time.Second*1, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
 }
