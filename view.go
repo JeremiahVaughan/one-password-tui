@@ -14,18 +14,11 @@ func (m model) View() string {
 
 	var display strings.Builder
 
-	// titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true).Background(lipgloss.Color("4")).PaddingTop(1).PaddingBottom(1).PaddingLeft(3).PaddingRight(3)
-	// title := "One Password"
-	// display.WriteString(titleStyle.Render(title))
-	// display.WriteRune('\n')
-	// display.WriteRune('\n')
-	// display.WriteRune('\n')
-
-	if m.loading {
-		display.WriteString(m.spinner.View())
-	} else {
-		switch m.data.activeView {
-		case activeViewEnterPassword:
+	switch m.data.activeView {
+	case activeViewEnterPassword:
+		if m.loading {
+			display.WriteString(m.spinner.View())
+		} else {
 			password := m.data.thePassword.Value()
 			maskedPassword := strings.Repeat("●", len(password))
 			view := fmt.Sprintf(
@@ -33,25 +26,35 @@ func (m model) View() string {
 				maskedPassword,
 			)
 			display.WriteString(view)
-		case activeViewListItems:
+		}
+	case activeViewListItems:
+		if m.loading {
+			display.WriteString(m.spinner.View())
+		} else {
 			display.WriteString(m.items.View())
-		case activeViewItem:
-			display.WriteString(m.itemDetails.View())
+		}
+	case activeViewItem:
+		display.WriteString(m.itemDetails.View())
+		if m.loading {
+			display.WriteRune('\t')
+			display.WriteString(fmt.Sprintf("%s downloading to %s", m.spinner.View(), m.downloadTarget))
+		} else if m.clipboardLifeMeter != nil && m.clipboardLifeMeter.Running() {
 			// timers start off as running even if they have not started, so using
 			// a nil check to get around this issue
-			if m.clipboardLifeMeter != nil && m.clipboardLifeMeter.Running() {
-				timerStyle := lipgloss.NewStyle()
-				secondsElapsed := m.clipboardLifeMeter.Timeout.Seconds()
-				if secondsElapsed > clipboardLifeInSeconds*.66 {
-					timerStyle = timerStyle.Foreground(lipgloss.Color("#00ff00"))
-				} else if secondsElapsed > clipboardLifeInSeconds*.33 {
-					timerStyle = timerStyle.Foreground(lipgloss.Color("#ffff00"))
-				} else {
-					timerStyle = timerStyle.Foreground(lipgloss.Color("#ff0000"))
-				}
-				display.WriteRune('\t')
-				display.WriteString(fmt.Sprintf("Clipboard cleanup in: %s", timerStyle.Render(m.clipboardLifeMeter.View())))
+			timerStyle := lipgloss.NewStyle()
+			secondsElapsed := m.clipboardLifeMeter.Timeout.Seconds()
+			if secondsElapsed > clipboardLifeInSeconds*.66 {
+				timerStyle = timerStyle.Foreground(lipgloss.Color("#00ff00"))
+			} else if secondsElapsed > clipboardLifeInSeconds*.33 {
+				timerStyle = timerStyle.Foreground(lipgloss.Color("#ffff00"))
+			} else {
+				timerStyle = timerStyle.Foreground(lipgloss.Color("#ff0000"))
 			}
+			display.WriteRune('\t')
+			display.WriteString(fmt.Sprintf("clipboard cleanup in %s", timerStyle.Render(m.clipboardLifeMeter.View())))
+		} else if m.data.fileDownloaded {
+			display.WriteRune('\t')
+			display.WriteString(fmt.Sprintf("download complete %s", m.downloadTarget))
 		}
 	}
 	if m.data.validationMsg != "" {

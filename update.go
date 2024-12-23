@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -131,7 +132,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.data.err = nil
 			m.data.validationMsg = ""
 
-			if msg.Type == tea.KeyCtrlC {
+			switch msg.Type {
+			case tea.KeyCtrlC:
 				return m, tea.Quit
 			}
 
@@ -145,8 +147,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.data.validationMsg = "must provide the password"
 						} else {
 							m.loading = true
+							md := m.data
 							go func() {
-								var md modelData
 								password := fmt.Sprintf("'%s'", passwordValue)
 								theCommand := exec.Command("op", "signin")
 								theCommand.Stdin = bytes.NewBufferString(password)
@@ -171,9 +173,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			case activeViewListItems:
-				if m.items.FilterState() != list.Filtering {
-					switch msg.Type {
-					case tea.KeyEnter:
+				switch msg.Type {
+				case tea.KeyEnter:
+					if m.items.FilterState() != list.Filtering {
 						if !m.loading {
 							theItem, ok := m.items.SelectedItem().(OnePasswordItem)
 							if !ok {
@@ -182,21 +184,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							// todo figure out how to fetch files, secret files are not showing up
 							theCommand := exec.Command("op", "item", "get", theItem.ID, "--format", "json")
 							m.loading = true
+							md := m.data
 							go func() {
-								var md modelData
-								output, err := theCommand.CombinedOutput()
-								if err != nil {
-									m.data.err = fmt.Errorf("error, during signin. Error: %v. Output: %s", err, output)
+								var output []byte
+								output, md.err = theCommand.CombinedOutput()
+								if md.err != nil {
+									md.err = fmt.Errorf("error, during signin. Error: %v. Output: %s", md.err, output)
 								} else {
 									var theItemDetails OnePasswordItemDetails
-									err = json.Unmarshal(output, &theItemDetails)
-									if err != nil {
-										m.data.err = fmt.Errorf("error, when decoding one password item details. Error: %v", err)
+									md.err = json.Unmarshal(output, &theItemDetails)
+									if md.err != nil {
+										md.err = fmt.Errorf("error, when decoding one password item details. Error: %v", md.err)
 									} else {
 										md.err = nil
 										md.validationMsg = ""
 										md.activeView = activeViewItem
 										md.selectedItem = theItemDetails
+										md.fileDownloaded = false
 									}
 								}
 								loadingFinished <- md
@@ -206,22 +210,54 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			case activeViewItem:
-				if m.itemDetails.FilterState() != list.Filtering {
-					switch msg.Type {
-					case tea.KeyEsc:
-						m.data.activeView = activeViewListItems
-					case tea.KeyEnter:
-						selectedItem, ok := m.itemDetails.SelectedItem().(Field)
-						if !ok {
-							m.data.err = errors.New("error, when casting selected item field")
-						} else {
-							m.data.err = copyPasswordToClipboard(selectedItem.Type, selectedItem.Value)
-							if m.data.err != nil {
-								m.data.err = fmt.Errorf("error, when copyPasswordToClipboard() for Update(). Error: %v", m.data.err)
+				switch msg.Type {
+				case tea.KeyEsc:
+					m.data.activeView = activeViewListItems
+				case tea.KeyEnter:
+					if m.itemDetails.FilterState() != list.Filtering {
+						if !m.loading {
+							selectedField, ok := m.itemDetails.SelectedItem().(Field)
+							if !ok {
+								var selectedFile File
+								selectedFile, ok = m.itemDetails.SelectedItem().(File)
+								if !ok {
+									m.data.err = errors.New("error, when casting selected item field")
+								} else {
+									var targetDir string
+									targetDir, m.data.err = getDownloadTargetDirectory()
+									if m.data.err != nil {
+										m.data.err = fmt.Errorf("error, when getDownloadTargetDirectory() for Update(). Error: %v", m.data.err)
+									} else {
+										m.downloadTarget = fmt.Sprintf("%s/%s", targetDir, selectedFile.Name)
+										m.loading = true
+										md := m.data
+										go func() {
+											md.err = downloadFileToDownloads(
+												m.downloadTarget,
+												m.data.selectedItem,
+												selectedFile,
+											)
+											if md.err != nil {
+												md.err = fmt.Errorf("error, when downloadFileToDownloads() for Update(). Error: %v", md.err)
+											} else {
+												md.fileDownloaded = true
+											}
+											loadingFinished <- md
+										}()
+										return m, m.spinner.Tick
+									}
+								}
 							} else {
-								newTimer := timer.NewWithInterval(clipboardLifeInSeconds*time.Second, time.Millisecond)
-								m.clipboardLifeMeter = &newTimer
-								cmd = m.clipboardLifeMeter.Init()
+								m.data.fileDownloaded = false
+								m.downloadTarget = ""
+								m.data.err = copyPasswordToClipboard(selectedField.Type, selectedField.Value)
+								if m.data.err != nil {
+									m.data.err = fmt.Errorf("error, when copyPasswordToClipboard() for Update(). Error: %v", m.data.err)
+								} else {
+									newTimer := timer.NewWithInterval(clipboardLifeInSeconds*time.Second, time.Millisecond)
+									m.clipboardLifeMeter = &newTimer
+									cmd = m.clipboardLifeMeter.Init()
+								}
 							}
 						}
 					}
@@ -239,6 +275,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resetSpinner()
 			m.loading = false
 			m.data = md
+			if m.data.activeView == "" {
+				m.data.err = errors.New("error, activeView is not set during spinner.TickMsg evaluation")
+			}
 			switch m.data.activeView {
 			case activeViewListItems:
 				itemsToSet := make([]list.Item, len(m.data.items))
@@ -341,4 +380,32 @@ func formatFileSize(size int) string {
 	} else {
 		return fmt.Sprintf("%.2f GB", float64(size)/(1024*1024*1024))
 	}
+}
+
+func downloadFileToDownloads(fileTarget string, itemDetails OnePasswordItemDetails, theFile File) error {
+	fileReference := fmt.Sprintf("op://%s/%s/%s", itemDetails.Vault.ID, itemDetails.ID, theFile.ID)
+	theCommand := exec.Command("op", "read", fileReference)
+	var err error
+	theCommand.Dir, err = getDownloadTargetDirectory()
+	if err != nil {
+		return fmt.Errorf("error, getDownloadTargetDirectory() for downloadFileToDownloads(). Error: %v", err)
+	}
+	var output []byte
+	output, err = theCommand.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error, when running the read file command for downloadFileToDownloads(). Error: %v. Output: %s", err, output)
+	}
+	err = os.WriteFile(fileTarget, output, 0600)
+	if err != nil {
+		return fmt.Errorf("error, when writing the file for downloadFileToDownloads(). Error: %v", err)
+	}
+	return nil
+}
+
+func getDownloadTargetDirectory() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("error, when getting the users home directory for getDownloadTarget(). Error: %v", err)
+	}
+	return fmt.Sprintf("%s/Downloads", homeDir), nil
 }
