@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -138,40 +137,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			switch m.data.activeView {
-			case activeViewEnterPassword:
-				switch msg.Type {
-				case tea.KeyEnter:
-					if !m.loading {
-						passwordValue := m.data.thePassword.Value()
-						if passwordValue == "" {
-							m.data.validationMsg = "must provide the password"
-						} else {
-							m.loading = true
-							md := m.data
-							go func() {
-								password := fmt.Sprintf("'%s'", passwordValue)
-								theCommand := exec.Command("op", "signin")
-								theCommand.Stdin = bytes.NewBufferString(password)
-								output, err := theCommand.CombinedOutput()
-								if err != nil {
-									m.data.err = fmt.Errorf("error, during signin. Error: %v. Output: %s", err, output)
-								} else {
-									listItems, err := fetchItems()
-									if err != nil {
-										m.data.err = fmt.Errorf("error, when fetchItems() for Update(). Error: %v. Output: %s", err, output)
-									} else {
-										md.err = nil
-										md.validationMsg = ""
-										md.activeView = activeViewListItems
-										md.items = listItems
-									}
-								}
-								loadingFinished <- md
-							}()
-						}
-						return m, m.spinner.Tick
-					}
-				}
 			case activeViewListItems:
 				switch msg.Type {
 				case tea.KeyEnter:
@@ -313,10 +278,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// if I don't do this down here the updates don't work properly, seems casting to type is causing an issue
 	switch m.data.activeView {
-	case activeViewEnterPassword:
-		m.data.thePassword, cmd = m.data.thePassword.Update(msg)
 	case activeViewListItems:
-		m.items, cmd = m.items.Update(msg)
+		if !m.loading && m.data.items == nil {
+			m.loading = true
+			md := m.data
+			go func() {
+				listItems, err := fetchItems()
+				if err != nil {
+					m.data.err = fmt.Errorf("error, when fetchItems() for Update(). Error: %v", err)
+				} else {
+					md.err = nil
+					md.validationMsg = ""
+					md.items = listItems
+				}
+				loadingFinished <- md
+			}()
+			return m, m.spinner.Tick
+		} else {
+			m.items, cmd = m.items.Update(msg)
+		}
 	case activeViewItem:
 		var cmd2 tea.Cmd
 		var cmd3 tea.Cmd
@@ -355,7 +335,7 @@ func copyPasswordToClipboard(theType FieldType, password string) error {
 		time.AfterFunc(clipboardLifeInSeconds*time.Second, func() {
 			err := clipboard.WriteAll("")
 			if err != nil {
-				log.Fatalf("error, failed to clear clipboard:", err)
+				log.Fatalf("error, failed to clear clipboard. Error: %v", err)
 			}
 		})
 	}

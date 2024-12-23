@@ -15,18 +15,6 @@ func (m model) View() string {
 	var display strings.Builder
 
 	switch m.data.activeView {
-	case activeViewEnterPassword:
-		if m.loading {
-			display.WriteString(m.spinner.View())
-		} else {
-			password := m.data.thePassword.Value()
-			maskedPassword := strings.Repeat("●", len(password))
-			view := fmt.Sprintf(
-				"Enter your password:\n\n %s\n\n(press enter to submit)",
-				maskedPassword,
-			)
-			display.WriteString(view)
-		}
 	case activeViewListItems:
 		if m.loading {
 			display.WriteString(m.spinner.View())

@@ -24,9 +24,8 @@ var loadingFinished = make(chan modelData, 1)
 type viewOption string
 
 const (
-	activeViewEnterPassword viewOption = "ep"
-	activeViewListItems     viewOption = "li"
-	activeViewItem          viewOption = "i"
+	activeViewListItems viewOption = "li"
+	activeViewItem      viewOption = "i"
 )
 
 const (
@@ -51,7 +50,6 @@ type modelData struct {
 	activeView     viewOption
 	items          []OnePasswordItem
 	selectedItem   OnePasswordItemDetails
-	thePassword    textinput.Model
 	fileDownloaded bool
 }
 
@@ -103,8 +101,7 @@ func initModel() (model, error) {
 		items:       items,
 		itemDetails: itemDetails,
 		data: modelData{
-			thePassword: thePassword,
-			activeView:  activeViewEnterPassword,
+			activeView: activeViewListItems,
 		},
 	}
 	m.resetSpinner()
