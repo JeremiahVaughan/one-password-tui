@@ -52,6 +52,19 @@ type OnePasswordItemDetails struct {
 	AdditionalInformation string    `json:"additional_information,omitempty"`
 	Sections              []Section `json:"sections,omitempty"`
 	Fields                []Field   `json:"fields,omitempty"`
+	Files                 []File    `json:"files"`
+}
+
+type Field struct {
+	ID              string          `json:"id,omitempty"`
+	Type            FieldType       `json:"type,omitempty"`
+	Purpose         string          `json:"purpose,omitempty"`
+	Label           string          `json:"label,omitempty"`
+	Value           string          `json:"value,omitempty"`
+	Reference       string          `json:"reference,omitempty"`
+	Entropy         float64         `json:"entropy,omitempty"`
+	PasswordDetails PasswordDetails `json:"password_details,omitempty"`
+	Section         Section         `json:"section,omitempty"`
 }
 
 func (f Field) Title() string {
@@ -66,6 +79,23 @@ func (f Field) Description() string {
 }
 func (f Field) FilterValue() string {
 	return f.Label
+}
+
+type File struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Size        int    `json:"size"`
+	ContentPath string `json:"content_path"`
+}
+
+func (f File) Title() string {
+	return f.Name
+}
+func (f File) Description() string {
+	return fmt.Sprintf("file size: %s", formatFileSize(f.Size))
+}
+func (f File) FilterValue() string {
+	return f.Name
 }
 
 type PasswordDetails struct {
@@ -91,18 +121,6 @@ const (
 	FieldTypeOtp         FieldType = "OTP"
 	FieldTypeNa          FieldType = "N/A"
 )
-
-type Field struct {
-	ID              string          `json:"id,omitempty"`
-	Type            FieldType       `json:"type,omitempty"`
-	Purpose         string          `json:"purpose,omitempty"`
-	Label           string          `json:"label,omitempty"`
-	Value           string          `json:"value,omitempty"`
-	Reference       string          `json:"reference,omitempty"`
-	Entropy         float64         `json:"entropy,omitempty"`
-	PasswordDetails PasswordDetails `json:"password_details,omitempty"`
-	Section         Section         `json:"section,omitempty"`
-}
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
@@ -235,6 +253,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						itemsToSet = append(itemsToSet, f)
 					}
 				}
+				for _, f := range md.selectedItem.Files {
+					itemsToSet = append(itemsToSet, f)
+				}
 				m.itemDetails.Title = md.selectedItem.Title
 				m.itemDetails.SetItems(itemsToSet)
 			}
@@ -308,4 +329,16 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(time.Second*1, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
+}
+
+func formatFileSize(size int) string {
+	if size < 1024 {
+		return fmt.Sprintf("%d B", size)
+	} else if size < 1024*1024 {
+		return fmt.Sprintf("%.2f KB", float64(size)/1024)
+	} else if size < 1024*1024*1024 {
+		return fmt.Sprintf("%.2f MB", float64(size)/(1024*1024))
+	} else {
+		return fmt.Sprintf("%.2f GB", float64(size)/(1024*1024*1024))
+	}
 }
