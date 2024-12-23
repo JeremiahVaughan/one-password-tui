@@ -33,14 +33,15 @@ const (
 )
 
 type model struct {
-	loading            bool
-	spinner            spinner.Model
-	cursor             int
-	data               modelData
-	items              list.Model
-	itemDetails        list.Model
-	clipboardLifeMeter *timer.Model
-	downloadTarget     string
+	loading                bool
+	spinner                spinner.Model
+	cursor                 int
+	data                   modelData
+	items                  list.Model
+	itemDetails            list.Model
+	clipboardLifeMeter     *timer.Model
+	clipboardCopyTriggered bool
+	downloadTarget         string
 }
 
 // modelData can't use the model itself because apparently channels have a size limit of 64kb

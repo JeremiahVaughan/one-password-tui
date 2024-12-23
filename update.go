@@ -215,14 +215,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							} else {
 								m.data.fileDownloaded = false
 								m.downloadTarget = ""
-								m.data.err = copyPasswordToClipboard(selectedField.Type, selectedField.Value)
-								if m.data.err != nil {
-									m.data.err = fmt.Errorf("error, when copyPasswordToClipboard() for Update(). Error: %v", m.data.err)
-								} else {
-									newTimer := timer.NewWithInterval(clipboardLifeInSeconds*time.Second, time.Millisecond)
-									m.clipboardLifeMeter = &newTimer
-									cmd = m.clipboardLifeMeter.Init()
-								}
+								m.loading = true
+								m.clipboardCopyTriggered = true
+								md := m.data
+								go func() {
+									md.err = copyPasswordToClipboard(m.items.SelectedItem(), selectedField)
+									if md.err != nil {
+										md.err = fmt.Errorf("error, when copyPasswordToClipboard() for Update(). Error: %v", md.err)
+									}
+									loadingFinished <- md
+								}()
+								return m, m.spinner.Tick
 							}
 						}
 					}
@@ -251,17 +254,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.items.SetItems(itemsToSet)
 			case activeViewItem:
-				var itemsToSet []list.Item
-				for _, f := range md.selectedItem.Fields {
-					if f.Value != "" {
+				if m.clipboardCopyTriggered {
+					newTimer := timer.NewWithInterval(clipboardLifeInSeconds*time.Second, time.Millisecond)
+					m.clipboardLifeMeter = &newTimer
+					cmd = m.clipboardLifeMeter.Init()
+					m.clipboardCopyTriggered = false
+				} else {
+					var itemsToSet []list.Item
+					for _, f := range md.selectedItem.Fields {
+						if f.Value != "" {
+							if f.Type == FieldTypeOtp {
+								f.Value = "******" // the value is not useful so this at least makes it look somewhat normal
+							}
+							itemsToSet = append(itemsToSet, f)
+						}
+					}
+					for _, f := range md.selectedItem.Files {
 						itemsToSet = append(itemsToSet, f)
 					}
+					m.itemDetails.Title = md.selectedItem.Title
+					m.itemDetails.SetItems(itemsToSet)
 				}
-				for _, f := range md.selectedItem.Files {
-					itemsToSet = append(itemsToSet, f)
-				}
-				m.itemDetails.Title = md.selectedItem.Title
-				m.itemDetails.SetItems(itemsToSet)
 			}
 		default:
 			m.spinner, cmd = m.spinner.Update(msg)
@@ -325,12 +338,12 @@ func fetchItems() ([]OnePasswordItem, error) {
 	return onePasswordItems, nil
 }
 
-func copyPasswordToClipboard(theType FieldType, password string) error {
-	err := clipboard.WriteAll(password)
-	if err != nil {
-		return fmt.Errorf("failed to copy password to clipboard: %v", err)
+func copyPasswordToClipboard(selectedItem list.Item, field Field) error {
+	si, ok := selectedItem.(OnePasswordItem)
+	if !ok {
+		return errors.New("error, when casting OnePasswordItem for copyPasswordToClipboard()")
 	}
-	switch theType {
+	switch field.Type {
 	case FieldTypeConcealed, FieldTypeOtp:
 		time.AfterFunc(clipboardLifeInSeconds*time.Second, func() {
 			err := clipboard.WriteAll("")
@@ -338,6 +351,22 @@ func copyPasswordToClipboard(theType FieldType, password string) error {
 				log.Fatalf("error, failed to clear clipboard. Error: %v", err)
 			}
 		})
+	}
+	var fieldValue string
+	if field.Type == FieldTypeOtp {
+		cmd := exec.Command("op", "item", "get", si.ID, "--otp")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("error, when fetching one time password for copyPasswordToClipboard(). Error: %v", err)
+		}
+		fieldValue = string(output)
+	} else {
+		fieldValue = field.Value
+	}
+
+	err := clipboard.WriteAll(fieldValue)
+	if err != nil {
+		return fmt.Errorf("error, failed to copy password to clipboard: %v", err)
 	}
 	return nil
 }

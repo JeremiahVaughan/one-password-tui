@@ -23,7 +23,10 @@ func (m model) View() string {
 		}
 	case activeViewItem:
 		display.WriteString(m.itemDetails.View())
-		if m.loading {
+		if m.clipboardCopyTriggered {
+			display.WriteRune('\t')
+			display.WriteString(fmt.Sprintf("%s fetching otp", m.spinner.View()))
+		} else if m.loading {
 			display.WriteRune('\t')
 			display.WriteString(fmt.Sprintf("%s downloading to %s", m.spinner.View(), m.downloadTarget))
 		} else if m.clipboardLifeMeter != nil && m.clipboardLifeMeter.Running() {
