@@ -161,6 +161,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							if !ok {
 								m.data.err = fmt.Errorf("error, invalid one password item type selected. Selected: %v", m.items.SelectedItem())
 							}
+							// todo figure out how to fetch files, secret files are not showing up
 							theCommand := exec.Command("op", "item", "get", theItem.ID, "--format", "json")
 							m.loading = true
 							go func() {
@@ -200,8 +201,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							if m.data.err != nil {
 								m.data.err = fmt.Errorf("error, when copyPasswordToClipboard() for Update(). Error: %v", m.data.err)
 							} else {
-								m.clipboardLifeMeter = newTimer()
-								m.clipboardLifeMeter.Init()
+								newTimer := timer.NewWithInterval(clipboardLifeInSeconds*time.Second, time.Millisecond)
+								m.clipboardLifeMeter = &newTimer
+								cmd = m.clipboardLifeMeter.Init()
 							}
 						}
 					}
@@ -209,7 +211,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case timer.TickMsg:
-		m.clipboardLifeMeter, cmd = m.clipboardLifeMeter.Update(msg)
+		var theTimer timer.Model
+		theTimer, cmd = m.clipboardLifeMeter.Update(msg)
+		m.clipboardLifeMeter = &theTimer
 		return m, cmd
 	case spinner.TickMsg:
 		select {
@@ -254,8 +258,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case activeViewListItems:
 		m.items, cmd = m.items.Update(msg)
 	case activeViewItem:
-		m.itemDetails, cmd = m.itemDetails.Update(msg)
-		m.clipboardLifeMeter, cmd = m.clipboardLifeMeter.Update(msg)
+		var cmd2 tea.Cmd
+		var cmd3 tea.Cmd
+		m.itemDetails, cmd2 = m.itemDetails.Update(msg)
+		if m.clipboardLifeMeter != nil {
+			var theTimer timer.Model
+			theTimer, cmd3 = m.clipboardLifeMeter.Update(msg)
+			m.clipboardLifeMeter = &theTimer
+		}
+		cmd = tea.Batch(cmd, cmd2, cmd3)
 	}
 	return m, cmd
 }

@@ -37,9 +37,20 @@ func (m model) View() string {
 			display.WriteString(m.items.View())
 		case activeViewItem:
 			display.WriteString(m.itemDetails.View())
-			if m.clipboardLifeMeter.Running() {
+			// timers start off as running even if they have not started, so using
+			// a nil check to get around this issue
+			if m.clipboardLifeMeter != nil && m.clipboardLifeMeter.Running() {
+				timerStyle := lipgloss.NewStyle()
+				secondsElapsed := m.clipboardLifeMeter.Timeout.Seconds()
+				if secondsElapsed > clipboardLifeInSeconds*.66 {
+					timerStyle = timerStyle.Foreground(lipgloss.Color("#00ff00"))
+				} else if secondsElapsed > clipboardLifeInSeconds*.33 {
+					timerStyle = timerStyle.Foreground(lipgloss.Color("#ffff00"))
+				} else {
+					timerStyle = timerStyle.Foreground(lipgloss.Color("#ff0000"))
+				}
 				display.WriteRune('\t')
-				display.WriteString(fmt.Sprintf("Clipboard cleanup in: %s", m.clipboardLifeMeter.View()))
+				display.WriteString(fmt.Sprintf("Clipboard cleanup in: %s", timerStyle.Render(m.clipboardLifeMeter.View())))
 			}
 		}
 	}
