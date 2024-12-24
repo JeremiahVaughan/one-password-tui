@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/atotto/clipboard"
@@ -65,6 +64,16 @@ type Field struct {
 	Entropy         float64         `json:"entropy,omitempty"`
 	PasswordDetails PasswordDetails `json:"password_details,omitempty"`
 	Section         Section         `json:"section,omitempty"`
+	SshFormats      SshFormats      `json:"ssh_formats,omitempty"`
+}
+
+type SshFormats struct {
+	Openssh Openssh `json:"openssh,omitempty"`
+}
+
+type Openssh struct {
+	Value     string `json:"value,omitempty"`
+	Reference string `json:"reference,omitempty"`
 }
 
 func (f Field) Title() string {
@@ -72,8 +81,8 @@ func (f Field) Title() string {
 }
 func (f Field) Description() string {
 	switch f.Type {
-	case FieldTypeConcealed, FieldTypeOtp:
-		return strings.Repeat("*", len(f.Value))
+	case FieldTypeConcealed, FieldTypeOtp, FieldTypeSshKey:
+		return MaskPlaceholder
 	}
 	return f.Value
 }
@@ -120,6 +129,9 @@ const (
 	FieldTypePhoneNumber FieldType = "PHONE"
 	FieldTypeOtp         FieldType = "OTP"
 	FieldTypeNa          FieldType = "N/A"
+	FieldTypeSshKey      FieldType = "SSHKEY"
+
+	MaskPlaceholder = "********"
 )
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -263,8 +275,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					var itemsToSet []list.Item
 					for _, f := range md.selectedItem.Fields {
 						if f.Value != "" {
-							if f.Type == FieldTypeOtp {
-								f.Value = "******" // the value is not useful so this at least makes it look somewhat normal
+							switch f.Type {
+							case FieldTypeOtp:
+								f.Value = MaskPlaceholder // the value is not useful so this at least makes it look somewhat normal
 							}
 							itemsToSet = append(itemsToSet, f)
 						}
@@ -353,14 +366,17 @@ func copyPasswordToClipboard(selectedItem list.Item, field Field) error {
 		})
 	}
 	var fieldValue string
-	if field.Type == FieldTypeOtp {
+	switch field.Type {
+	case FieldTypeOtp:
 		cmd := exec.Command("op", "item", "get", si.ID, "--otp")
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("error, when fetching one time password for copyPasswordToClipboard(). Error: %v", err)
 		}
 		fieldValue = string(output)
-	} else {
+	case FieldTypeSshKey:
+		fieldValue = field.SshFormats.Openssh.Value
+	default:
 		fieldValue = field.Value
 	}
 
