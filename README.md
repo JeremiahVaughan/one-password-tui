@@ -1,6 +1,4 @@
-# TUI for One Password
-
-Install: 
+# Install
     - 1Password Application: `https://support.1password.com/get-the-apps/`
     - 1Password CLI: `https://developer.1password.com/docs/cli/get-started/#install`
     - Configure Authentication for 1Password CLI: `https://developer.1password.com/docs/cli/app-integration`
