@@ -267,9 +267,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.items.SetItems(itemsToSet)
 			case activeViewItem:
 				if m.clipboardCopyTriggered {
-					newTimer := timer.NewWithInterval(clipboardLifeInSeconds*time.Second, time.Millisecond)
+					newTimer := timer.NewWithInterval(clipboardLifeInSeconds*time.Second, time.Millisecond*47)
 					m.clipboardLifeMeter = &newTimer
-					cmd = m.clipboardLifeMeter.Init()
+					clipCmd := m.clipboardLifeMeter.Init()
+					cmd = tea.Batch(cmd, clipCmd)
 					m.clipboardCopyTriggered = false
 				} else {
 					var itemsToSet []list.Item
@@ -325,14 +326,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case activeViewItem:
 		var cmd2 tea.Cmd
-		var cmd3 tea.Cmd
 		m.itemDetails, cmd2 = m.itemDetails.Update(msg)
-		if m.clipboardLifeMeter != nil {
-			var theTimer timer.Model
-			theTimer, cmd3 = m.clipboardLifeMeter.Update(msg)
-			m.clipboardLifeMeter = &theTimer
-		}
-		cmd = tea.Batch(cmd, cmd2, cmd3)
+		cmd = tea.Batch(cmd, cmd2)
 	}
 	return m, cmd
 }
